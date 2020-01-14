@@ -1,0 +1,45 @@
+DECLARE @i INT = (SELECT DATEDIFF(MONTH,CAST('2013-01-01' AS DATE),GETDATE())+1)
+DECLARE @SQL1 NVARCHAR(MAX),@SQL2 NVARCHAR(MAX)
+SET @SQL1 = 'DECLARE '
+WHILE @i != -1
+BEGIN
+	IF @i = 0
+		SET @SQL1 = @SQL1 + '@Currdate' + CAST(@i AS NVARCHAR(10)) + ' AS NVARCHAR(255), @SQL NVARCHAR(MAX) '
+	ELSE 
+		SET @SQL1 = @SQL1 + '@Currdate' + CAST(@i AS NVARCHAR(10)) + ' AS NVARCHAR(255), '
+	SET @i = @i - 1;
+END;
+SET @i = (SELECT DATEDIFF(MONTH,CAST('2013-01-01' AS DATE),GETDATE()))
+WHILE @i != -1
+BEGIN 
+	IF @i = 0
+		SET @SQL1 = @SQL1 + 'SET @CurrDate' + CAST(@i AS NVARCHAR(10)) +' = CAST(FORMAT(GETDATE(),''yyyy.MM'') AS NVARCHAR(255)) '
+	ELSE
+		SET @SQL1 = @SQL1 + 'SET @CurrDate' + CAST(@i AS NVARCHAR(10)) +' = CAST(FORMAT(DATEADD(MONTH,-' + CAST(@i AS NVARCHAR(10)) + ',GETDATE()),''yyyy.MM'') AS NVARCHAR(255)) '
+	SET @i = @i - 1;
+END
+SET @SQL1 = @SQL1 + 'SET @SQL = ''SELECT PARAMETRS, '  
+SET @i = (SELECT DATEDIFF(MONTH,CAST('2013-01-01' AS DATE),GETDATE()))
+WHILE @i != -1
+BEGIN 
+	IF @i = 0
+		SET @SQL1 = @SQL1 + '['' + @CurrDate' + CAST(@i AS NVARCHAR(10))  + ' + ''] '
+	ELSE
+		SET @SQL1 = @SQL1 + '['' + @CurrDate' + CAST(@i AS NVARCHAR(10))  + ' + ''], '
+	SET @i = @i - 1;
+END
+SET @SQL1 = @SQL1 + 'FROM (SELECT ''''BOM_Val'''' AS PARAMETRS, [Year/Month], SUM([BOM_Val]) AS SumBOM
+FROM [Storage_Layer].[EUNET\RYBOVAL1].[SMALL_STOCK4] GROUP BY [Year/Month]) AS SourceTable
+PIVOT(
+	SUM([SumBOM])
+	FOR [Year/Month] IN ('
+SET @i = (SELECT DATEDIFF(MONTH,CAST('2013-01-01' AS DATE),GETDATE()))
+WHILE @i != -1
+BEGIN 
+	IF @i = 0
+		SET @SQL1 = @SQL1 + '['' + @CurrDate' + CAST(@i AS NVARCHAR(10))  + ' + ''])) AS Pivotable '' EXEC SP_EXECUTESQL @SQL'
+	ELSE
+		SET @SQL1 = @SQL1 + '['' + @CurrDate' + CAST(@i AS NVARCHAR(10))  + ' + ''], '
+	SET @i = @i - 1;
+END
+EXEC SP_EXECUTESQL @SQL1
