@@ -1,0 +1,231 @@
+IF EXISTS (SELECT * FROM dbo.sysobjects WHERE id = object_id(N'[EUNET\RYBOVAL1].[Cleaning Data]') and OBJECTPROPERTY(id, N'IsUserTable') = 1)
+DROP TABLE [EUNET\RYBOVAL1].[Cleaning Data];
+CREATE TABLE [EUNET\RYBOVAL1].[Cleaning Data] (Number INT, Initial_data FLOAT, Year INT, Month INT, Non_Trend FLOAT, Non_Sessonal FLOAT, Corrected FLOAT, Outlier INT)
+DECLARE @rscript NVARCHAR(MAX), @p1 INT = 0, @p2 INT = 0, @p3 INT = 0, @p4 INT = 0, @sum INT = 0 /*@Table_Name NVARCHAR(MAX), @Column_Name NVARCHAR(MAX)*/
+DECLARE @sqlscript NVARCHAR(MAX);
+IF @PER_ID IS NOT NULL
+	BEGIN 
+		SET @p1 = 1
+	END 
+IF @Year IS NOT NULL
+	BEGIN 
+		SET @p2 = 1
+	END
+IF @Month IS NOT NULL
+	BEGIN 
+		SET @p3 = 1
+	END
+IF @FDF IS NOT NULL
+	BEGIN 
+		SET @p4 = 1
+	END
+SET @sum = @p1 + @p2 + @p3 + @p4
+IF @sum >= 0
+	BEGIN 
+		SET @sqlscript = N'SELECT ROW_NUMBER() OVER (ORDER BY Y, M) AS NUM, SUM('+ @Column_Name + ') AS ' + @Column_Name + ', Y, M FROM ' + @Table_Name 
+	END 
+--IF @p1 = 1 
+--	BEGIN 
+--		SET @sqlscript = @sqlscript + ', PER_ID'
+--	END
+--IF @p2 = 1 
+--	BEGIN 
+--		SET @sqlscript = @sqlscript + ', Y'
+--	END
+--IF @p3 = 1 
+--	BEGIN 
+--		SET @sqlscript = @sqlscript + ', M'
+--	END
+--IF @p4 = 1 
+--	BEGIN 
+--		SET @sqlscript = @sqlscript + ', FDF'
+--	END
+
+IF @sum >= 1
+	BEGIN 
+		SET @sqlscript = @sqlscript + ' WHERE '
+		IF @p1 = 1
+			BEGIN 
+				SET @sqlscript = @sqlscript + 'PER_ID = ' + @PER_ID
+			END
+		ELSE IF @p2 = 1
+			BEGIN 
+				SET @sqlscript = @sqlscript + 'Y = ' + @Year
+			END 
+		ELSE IF @p3 = 1
+			BEGIN 
+				SET @sqlscript = @sqlscript + 'M = ' + @Month
+			END
+		ELSE IF @p4 = 1
+			BEGIN 
+				SET @sqlscript = @sqlscript + 'FDF = ' + @FDF
+			END 
+	END
+
+
+
+	IF @sum >= 2 AND @p1 = 1
+		BEGIN
+			SET @sqlscript = @sqlscript + ' AND '
+			IF @p2 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'Y = ' + @Year
+				END
+			ELSE IF @p3 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'M = ' + @Month
+				END
+			ELSE IF @p4 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'FDF = ' + @FDF
+				END
+		END
+	ELSE IF @sum >= 2 AND @p2 = 1
+		BEGIN
+			SET @sqlscript = @sqlscript + ' AND '
+			IF @p3 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'M = ' + @Month
+				END
+			ELSE IF @p4 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'FDF = ' + @FDF
+				END
+		END 
+	ELSE IF @sum >= 2 AND @p3 = 1
+		BEGIN
+			SET @sqlscript = @sqlscript + ' AND '
+			IF @p2 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'Y = ' + @Year
+				END
+			ELSE IF @p4 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'FDF = ' + @FDF
+				END
+		END		
+
+
+	--IF @sum >= 3 AND @p3 = 1 
+	--	BEGIN
+	--		SET @sqlscript = @sqlscript + ' AND '
+	--		IF @p3 = 1 
+	--			BEGIN 
+	--				SET @sqlscript = @sqlscript + 'M = ' + @Month
+	--			END
+	--	END		  
+	
+	 IF @sum >= 3 AND @p4 = 1 
+		BEGIN
+			SET @sqlscript = @sqlscript + ' AND '
+			IF @p4 = 1 
+				BEGIN 
+					SET @sqlscript = @sqlscript + 'FDF = ' + @FDF
+				END
+		END
+	 
+IF @sum = 4
+	BEGIN
+		SET @sqlscript = @sqlscript + ' AND FDF = ' + @FDF
+	END 
+
+SET @sqlscript = @sqlscript + ' GROUP BY Y, M ORDER BY Y, M' 
+SET @rscript = N'
+deploy2 <- data.frame(SQLIn)
+	if (nrow(deploy2) == 0) {
+		data <- 0
+		number <- 0 
+		column <- "Null"
+		year <- 0
+		month <- 0
+	} else {
+		data <- as.numeric(deploy2[,2])
+		number <- as.numeric(deploy2[,1])
+		column <- Column
+		year <- as.numeric(deploy2[,3])
+		month <- as.numeric(deploy2[,4])
+	}
+datasum <- sum(data)
+
+
+slope <- lm( data ~ number )$coefficients[2]  # Calculation of SLOPE
+nontrend <- data-number*slope                 # Calcualtion vector without Trend
+
+deploy2$NonTrend <- nontrend                  # Add Columns without Trend
+
+nontrendsum <- sum(nontrend)                  # Aggregate SUM
+
+for (i in 1:length(unique(month))) {             
+	val <- sum(deploy2[deploy2$M == i,5])/nontrendsum          # Idea: You choose month in every year (1/2017; 1/2018; 1/2019;1/2020 etc) -> Delete on NON_Trend -> and shift month +1 on each iteration -> Write it on Vector
+	vector <- c(vector, val)
+ }
+
+CorrFac <- qnorm(max(c(0.5,min(c(0.9999, 1 - Corr_Fac)))))     # Returns the inverse of the standart normal distribution 
+
+seasonF <- vector[c(2:length(vector))]                         # Create new vector with normal data, first note was name of this calculation, and I remove this from my vector
+
+if (is.null(nontrendsum) | nontrendsum == 0) {
+	nonseasonal <- 0
+} else {
+	nonseasonal <- as.numeric(nontrend)/as.numeric(seasonF)/12        # Check on Null or 0 then calculation NON_SEASONAL
+}
+
+deploy2$NonSessonal <- nonseasonal									  # Add NON_SEASONAL in main table 
+
+AVRnonseasonal <- mean(nonseasonal)                                   # Calcualte Average NON_SEASONAL
+
+STDEVnonseasonal <- sd(nonseasonal)								      # Calculate Standart Deviation NON_SEASONAL
+
+MINnonseasonal <- AVRnonseasonal - STDEVnonseasonal*CorrFac			  # Calculate bottom line			
+
+MAXnonseasonal <- AVRnonseasonal + STDEVnonseasonal*CorrFac			  # Calculate top Line
+
+CorrectedS <- c()													  # Redim our vector
+
+for (i in 1:length(nonseasonal)) {
+	val2 <- c(min(MAXnonseasonal,max(c(MINnonseasonal,nonseasonal[i]))))		# Round all our value in Vector (Exclude emissions)
+	CorrectedS <- c(CorrectedS, val2)
+}
+
+CountYear = max(year) - min(year) + 1
+
+for (i in 1:CountYear) {
+	seasonF <- append(seasonF, seasonF, after = length(seasonF))				# Determine time period
+}
+
+Corrected <- c()																# Redim our vector
+
+for (i in 1:length(nonseasonal)) {
+	val3 <- max(c(0.001, CorrectedS[i] * 12 * as.numeric(seasonF[i]) + number[i] * slope))		# Final Calculations 
+	Corrected <- c(Corrected, val3)
+}
+
+deploy2$Corrected <- Corrected
+
+Outlier <- c()
+for (i in 1:length(Corrected)) {
+	if (round(Corrected[i],5) - round(data[i],5) != 0 ) {
+		Outlier[i] <- 1
+	} else {
+		Outlier[i] <- 0
+	}
+}
+
+deploy2$Outlier <- Outlier
+
+SQLOut <- data.frame(deploy2)
+'
+INSERT INTO [EUNET\RYBOVAL1].[Cleaning Data]
+EXEC sp_execute_external_script
+@language = N'R',
+@script = @rscript,
+@input_data_1 = @sqlscript,
+@input_data_1_name = N'SQLIn',
+@output_data_1_name = N'SQLOut',
+@params = N' @Column NVARCHAR(MAX), @PER_ID_R NVARCHAR(100), @Year_R NVARCHAR(100), @Month_R NVARCHAR(100), @FDF_R NVARCHAR(200), @Corr_Fac FLOAT',
+@Column = @Column_Name,
+@PER_ID_R = @PER_ID,
+@Year_R =@Year,
+@Month_R = @Month,
+@FDF_R = @FDF,
+@Corr_Fac = @Correct_Factor
